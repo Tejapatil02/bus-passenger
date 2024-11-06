@@ -1,80 +1,88 @@
-const express = require('express');
-const bodyParser = require('body-parser');
+const express = require('express'),
+    bodyParser = require('body-parser'),
+    // In order to use PUT HTTP verb to edit item
+    methodOverride = require('method-override'),
+    // Mitigate XSS using sanitizer
+    sanitizer = require('sanitizer'),
+    app = express(),
+    port = 8000
 
-const app = express();
-const port = 3000;
-
-// Middleware to parse JSON request bodies
-app.use(bodyParser.json());
-
-// Sample bus routes
-const busRoutes = [
-  {
-    id: 'route-1',
-    name: 'Downtown to Central Park',
-    stops: ['Downtown Station', 'City Hall', 'Main Street', 'Central Park Entrance', 'Central Park Exit'],
-    timings: {
-      firstBus: '7:00 AM',
-      lastBus: '8:00 PM',
-      frequency: 'Every 30 minutes during peak hours, hourly during off-peak hours.'
+app.use(bodyParser.urlencoded({
+    extended: false
+}));
+// https: //github.com/expressjs/method-override#custom-logic
+app.use(methodOverride(function (req, res) {
+    if (req.body && typeof req.body === 'object' && '_method' in req.body) {
+        // look in urlencoded POST bodies and delete it
+        let method = req.body._method;
+        delete req.body._method;
+        return method
     }
-  },
-  {
-    id: 'route-2',
-    name: 'Airport to North Terminal',
-    stops: ['Airport Main Terminal', 'Departure Gate 1', 'Arrival Terminal', 'North Terminal Entrance'],
-    timings: {
-      firstBus: '6:00 AM',
-      lastBus: '10:00 PM',
-      frequency: 'Every 15 minutes during high-traffic periods, every 45 minutes during late-night hours.'
-    }
-  }
-];
+}));
 
-// Storage for student registrations (in-memory, could be a database)
-let studentRegistrations = [];
 
-// Route to get all bus routes
-app.get('/api/routes', (req, res) => {
-  res.json(busRoutes);
-});
+let todolist = [];
 
-// Route to register a student for a bus route
-app.post('/api/register', (req, res) => {
-  const { name, routeId } = req.body;
+/* The to do list and the form are displayed */
+app.get('/todo', function (req, res) {
+        res.render('todo.ejs', {
+            todolist,
+            clickHandler: "func1();"
+        });
+    })
 
-  // Find the selected bus route
-  const selectedRoute = busRoutes.find(route => route.id === routeId);
-  
-  if (!selectedRoute) {
-    return res.status(404).json({ message: 'Bus route not found' });
-  }
+    /* Adding an item to the to do list */
+    .post('/todo/add/', function (req, res) {
+        // Escapes HTML special characters in attribute values as HTML entities
+        let newTodo = sanitizer.escape(req.body.newtodo);
+        if (req.body.newtodo != '') {
+            todolist.push(newTodo);
+        }
+        res.redirect('/todo');
+    })
 
-  // Register student (you can add more validation here)
-  const student = {
-    name: name,
-    routeId: selectedRoute.id,
-    routeName: selectedRoute.name
-  };
+    /* Deletes an item from the to do list */
+    .get('/todo/delete/:id', function (req, res) {
+        if (req.params.id != '') {
+            todolist.splice(req.params.id, 1);
+        }
+        res.redirect('/todo');
+    })
 
-  studentRegistrations.push(student);
-  
-  res.status(201).json({ message: 'Student registered successfully', student });
-});
+    // Get a single todo item and render edit page
+    .get('/todo/:id', function (req, res) {
+        let todoIdx = req.params.id;
+        let todo = todolist[todoIdx];
 
-// Route to get all registered students for a specific route
-app.get('/api/students/:routeId', (req, res) => {
-  const { routeId } = req.params;
-  const studentsForRoute = studentRegistrations.filter(student => student.routeId === routeId);
+        if (todo) {
+            res.render('edititem.ejs', {
+                todoIdx,
+                todo,
+                clickHandler: "func1();"
+            });
+        } else {
+            res.redirect('/todo');
+        }
+    })
 
-  if (studentsForRoute.length === 0) {
-    return res.status(404).json({ message: 'No students registered for this route' });
-  }
+    // Edit item in the todo list 
+    .put('/todo/edit/:id', function (req, res) {
+        let todoIdx = req.params.id;
+        // Escapes HTML special characters in attribute values as HTML entities
+        let editTodo = sanitizer.escape(req.body.editTodo);
+        if (todoIdx != '' && editTodo != '') {
+            todolist[todoIdx] = editTodo;
+        }
+        res.redirect('/todo');
+    })
+    /* Redirects to the to do list if the page requested is not found */
+    .use(function (req, res, next) {
+        res.redirect('/todo');
+    })
 
-  res.json(studentsForRoute);
-});
-
-// Start the server
-app.listen(port, () => {
-  console.log(`Bus management system running on http://localhost:${port}`);
-});
+    .listen(port, function () {
+        // Logging to console
+        console.log(`Todolist running on http://0.0.0.0:${port}`)
+    });
+// Export app
+module.exports = app;
